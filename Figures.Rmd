@@ -17,6 +17,7 @@ library("UpSetR")
 
 
 ```{r}
+#List all file paths containing ERV vst counts:
 vst_filepaths<- list("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-PAAD/paad_vst_0.50_2673.csv",
                   "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LIHC/lihc_vst_0.50_2229.csv",
                   "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/kirc_vst_3338_463.csv",
@@ -31,6 +32,7 @@ vst.data_frames = lapply(vst_filepaths,function(i){
     ret <- read.csv(i,stringsAsFactors=FALSE, row.names = 1, check.names = F)
     ret
 })
+# Intersection of ERVs across all cohorts
 common_ervs = Reduce(intersect, lapply(vst.data_frames, row.names))
 #write.csv(common_ervs, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/pancan_ERVintersection.csv")
 
