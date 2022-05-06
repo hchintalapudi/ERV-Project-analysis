@@ -1,0 +1,335 @@
+---
+title: "Figures for ERV project"
+author: "Himanshu Chintalapudi"
+date: "5/5/2022"
+output: html_document
+---
+
+
+
+```{r}
+library("factoextra")
+library("ggplot2")
+library("tidyverse")
+library("Vennerable")
+library("UpSetR")
+```
+
+
+```{r}
+vst_filepaths<- list("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-PAAD/paad_vst_0.50_2673.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LIHC/lihc_vst_0.50_2229.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/kirc_vst_3338_463.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-COAD/coad_vst_0.50_2275.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-OV/ov_vst_0.5_2620_365.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-BLCA/blca_vst_0.5_2732.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_vst_0.5_3060_481.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-BRCA/brca_vst_0.50_2966.csv")
+colnames.strings <- c("PAAD","LIHC","KIRC","COAD","OV","BLCA","LUAD","BRCA")
+
+vst.data_frames = lapply(vst_filepaths,function(i){
+    ret <- read.csv(i,stringsAsFactors=FALSE, row.names = 1, check.names = F)
+    ret
+})
+common_ervs = Reduce(intersect, lapply(vst.data_frames, row.names))
+#write.csv(common_ervs, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/pancan_ERVintersection.csv")
+
+union_ervs  = Reduce(union, lapply(vst.data_frames, row.names))
+
+vst.data_frames.pca = lapply(vst.data_frames, function(x) { x[row.names(x) %in% common_ervs,] })
+
+pca_data = as.data.frame(t(do.call(cbind, vst.data_frames.pca)))
+
+type<- c(rep("PAAD",135),rep("LIHC", 342), rep("KIRC", 463), rep("COAD", 321),  rep("OV", 365), rep("BLCA", 390), rep("LUAD", 481), rep("BRCA", 445))
+type<- factor(type, levels = c("PAAD","LIHC", "KIRC","COAD","OV", "BLCA", "LUAD", "BRCA"))
+
+colType <- c("#44AA99","#D55E00", "#DDCC77", "#E69F00", "#332288", "#117733", "#6699CC", "#CC79A7")[type]
+pchType <- c(8,3, 23, 22, 24,25,21)[type]
+pchType<- 21
+col     <- c("#44AA99","#D55E00","black","black","black","black","black")[type] 
+pca<- prcomp(pca_data, scale. = T)
+
+fviz_pca_biplot(pca,
+                geom = "point",
+                invisible = "var",
+                habillage = type,
+                col.ind = type,
+                fill.ind = type,
+                alpha.ind =0.7,
+                #repel = T,
+                ggtheme = theme_minimal(),
+                legend.title = "TCGA tumor type") +
+  scale_shape_manual(values=c(8,3, 23,11, 22, 24,25,21)) +
+  scale_color_manual(values = c("PAAD" = "#44AA99",
+                                "LIHC" = "#D55E00",
+                                "KIRC" = "#DDCC77",
+                                "COAD" = "#E69F00",
+                                "OV" = "#332288",
+                                "BLCA" = "#117733",
+                                "LUAD" = "#6699CC",
+                                "LUAD" = "#6699CC",
+                                "BRCA" = "#CC79A7"))
+```
+
+
+```{r}
+## UMAP for Telescope counts:
+vst.data_frames.umap = lapply(vst.data_frames, function(x) { x[row.names(x) %in% union_ervs,] })
+set.seed(1234)
+
+umap_results <- umap::umap(pca_data, preserve.seed = T)
+TCGA.tumor.type<- c(rep("PAAD",135),rep("LIHC", 342), rep("KIRC", 463), rep("COAD", 321), rep("OV", 365), rep("BLCA", 390), rep("LUAD", 481), rep("BRCA", 445))
+TCGA.tumor.type<- factor(TCGA.tumor.type, levels = c("PAAD","LIHC", "KIRC", "COAD", "OV", "BLCA", "LUAD", "BRCA"))
+type_df<- data.frame(rownames(pca_data),type)
+
+umap_plot_df <- data.frame(umap_results$layout) %>%
+  # Turn sample IDs stored as row names into a column
+  tibble::rownames_to_column("Samples")%>%
+  # Add the metadata into this data frame; match by sample IDs
+  dplyr::inner_join(type_df, by = c("Samples" = "rownames.pca_data."))
+
+ggplot(
+  umap_plot_df,
+  aes(
+    x = X1,
+    y = X2,
+    color = TCGA.tumor.type)
+) +scale_color_manual(values = c("PAAD" = "#44AA99",
+                                "LIHC" = "#D55E00",
+                                "KIRC" = "#DDCC77",
+                                "COAD" = "#E69F00",
+                                "OV" = "#332288",
+                                "BLCA" = "#117733",
+                                "LUAD" = "#6699CC",
+                                "LUAD" = "#6699CC",
+                                "BRCA" = "#CC79A7")) +
+  geom_point() +theme_classic() +xlab("UMAP1") + ylab("UMAP2")
+```
+
+```{r}
+## UMAP for gene counts:
+gene_tpm_filepaths<- list("/Users/hchintalapudi/Desktop/work/TCGA analysis/TCGA_cellularcounts_TPM_wUpdatedGeneLengths_135.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LIHC/lihc_genecounts_tpm_342.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-COAD/TCGA_COAD_tpm.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-OV/ov_genecounts_tpm_365.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-BLCA/BLCA_tpm_390.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_genecounts_tpm_481.csv",
+                  "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-BRCA/brca_genecounts_tpm_445.txt")
+
+tpm.data_frames = lapply(gene_tpm_filepaths,function(i){
+    ret <- read.csv(i,stringsAsFactors=FALSE, row.names = 1, check.names = F)
+    ret
+})
+
+tpm_umap_df<- as.data.frame(t(do.call(cbind, tpm.data_frames)))
+set.seed(1234)
+tpm_umap_results <- umap::umap(tpm_umap_df, preserve.seed = T)
+TCGA.tumor.type<- c(rep("PAAD",135),rep("LIHC", 342), rep("COAD", 321), rep("OV", 365), rep("BLCA", 390), rep("LUAD", 481), rep("BRCA", 445))
+TCGA.tumor.type<- factor(TCGA.tumor.type, levels = c("PAAD","LIHC", "COAD", "OV", "BLCA", "LUAD", "BRCA"))
+type_df<- data.frame(rownames(tpm_umap_df),TCGA.tumor.type)
+
+tpm_umap_plot_df <- data.frame(tpm_umap_results$layout) %>%
+  # Turn sample IDs stored as row names into a column
+  tibble::rownames_to_column("Samples")%>%
+  # Add the metadata into this data frame; match by sample IDs
+  dplyr::inner_join(type_df, by = c("Samples" = "rownames.tpm_umap_df."))
+
+ggplot(
+  tpm_umap_plot_df,
+  aes(
+    x = X1,
+    y = X2,
+    color = TCGA.tumor.type)
+) +scale_color_manual(values = c("PAAD" = "#44AA99",
+                                "LIHC" = "#D55E00",
+                                #"KIRC" = "#DDCC77",
+                                "COAD" = "#E69F00",
+                                "OV" = "#332288",
+                                "BLCA" = "#117733",
+                                "LUAD" = "#6699CC",
+                                "LUAD" = "#6699CC",
+                                "BRCA" = "#CC79A7")) +
+  geom_point() +theme_classic() +xlab("UMAP1") + ylab("UMAP2")
+```
+
+```{r}
+### Venn diagrams for ERV overlaps:
+vst.ERVs = lapply(vst_filepaths,function(i){
+    rownames <- rownames(read.csv(i,stringsAsFactors=FALSE, row.names = 1, check.names = F))
+    rownames
+})
+
+vst.ERVs_combined<- list(PAAD =vst.ERVs[[1]],
+                        LIHC = vst.ERVs[[2]],
+                        KIRC = vst.ERVs[[3]],
+                        COAD = vst.ERVs[[4]],
+                        OV = vst.ERVs[[5]],
+                        BLCA = vst.ERVs[[6]],
+                        LUAD = vst.ERVs[[7]],
+                        BRCA = vst.ERVs[[8]])
+
+UpSetR::upset(fromList(vst.ERVs_combined), order.by = "freq", nsets = 8,
+              sets = rev(c("PAAD","LIHC", "KIRC","COAD", "OV", "BLCA", "LUAD", "BRCA")),
+              sets.bar.color=rev(c("#44AA99","#D55E00", "#DDCC77","#E69F00", "#332288", "#117733", "#6699CC", "#CC79A7")),
+              #group.by = "sets",
+              keep.order = T,
+              sets.x.label = "# of ERVs",
+              set_size.show =T,
+              set_size.scale_max =3800)
+
+### Upset plot for Cox results for all cohorts
+cox.results_filepaths<- list("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-PAAD/paad_cox_res_0.5_2673.csv",
+                             "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LIHC/LIHC-vst_cox_results_0.50_2229.csv",
+                             "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/KIRC-vst_cox_results_463.csv",
+                             "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-COAD/coad_cox_res_0.5_2275.csv",
+                             "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-OV/OV-vst_cox_results_0.5_2620_365.csv",
+                             "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-BLCA/BLCA-vst_cox_results_0.5_2732_390.csv",
+                             "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/LUAD-vst_cox_results_481.csv",
+                             "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-BRCA/BRCA-vst_cox_results_0.50_2966.csv")
+
+
+cox.results_list = lapply(cox.results_filepaths,function(i){
+    coxx <- read.csv(i,stringsAsFactors=FALSE, row.names = 1, check.names = F)
+})
+
+common_ervs.cox.p.0.05 = lapply(cox.results_list, subset, P<0.05)
+
+subsetl <- lapply(cox.results_filepaths,function(x) {
+    rownames(x)[x$P<0.05,]
+    return(rownames(x))
+})
+
+length(common_ervs.cox.p.0.05)[[1]]
+
+
+len <- max( sapply(common_ervs.cox.p.0.05 , length ) )
+tmp<- as.data.frame(sapply( common_ervs.cox.p.0.05 , function(x) c( x , rep( NA , len - length(x) ) ) ))
+
+## If you need the ERVs from PanCan LASSO coxph:
+pancan_cox_coeffs<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/pancan_coxph_from-glmnetLASSO_coeffs.csv", check.names = F, row.names = 1)
+
+cox_res.ERVs_combined<- list(PAAD =common_ervs.cox.p.0.05[[1]]$Variable,
+                             LIHC = common_ervs.cox.p.0.05[[2]]$Variable,
+                             KIRC = common_ervs.cox.p.0.05[[3]]$Variable,
+                             COAD = common_ervs.cox.p.0.05[[4]]$Variable,
+                             OV = common_ervs.cox.p.0.05[[5]]$Variable,
+                             BLCA = common_ervs.cox.p.0.05[[6]]$Variable,
+                             LUAD = common_ervs.cox.p.0.05[[7]]$Variable,
+                             BRCA = common_ervs.cox.p.0.05[[8]]$Variable,
+                             PanCanLASSOcoxph = rownames(pancan_cox_coeffs)[pancan_cox_coeffs$`Pr(>|z|)`<0.05])
+
+UpSetR::upset(fromList(cox_res.ERVs_combined), order.by = "freq", nsets = 8,
+              sets = rev(c("PAAD","LIHC", "KIRC","COAD", "OV", "BLCA", "LUAD", "BRCA", "PanCanLASSOcoxph")),
+              sets.bar.color=rev(c("#44AA99","#D55E00", "#DDCC77", "#E69F00", "#332288", "#117733", "#6699CC", "#CC79A7", "grey")),
+              #group.by = "sets",
+              keep.order = T,
+              sets.x.label = "# of ERVs at P<0.05",
+              set_size.show =T,
+              set_size.scale_max =2500)
+```
+
+```{r}
+## Load family-level annotations:
+erv_anno_fam<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/Telescope_locus-60_family_map.csv", row.names = 1)
+
+cohort<- c("PAAD","LIHC", "KIRC", "COAD", "OV", "BLCA", "LUAD", "BRCA")
+counter <- 0
+vst.df.plot = lapply(vst_filepaths,function(i){
+    counter <<- counter + 1
+    cat("cohort", cohort[counter], "\n")
+    ret <- read.csv(i,stringsAsFactors=FALSE, row.names = 1, check.names = F)
+    ret<- ret%>%
+      rownames_to_column("ERV")%>%
+      left_join(Telescope_locus.fam, by = c("ERV" = "transcript_id"))
+    ret<-ret%>%
+      group_by(V1, ERV) %>%
+      summarise(Nb = n()) %>%
+      mutate(C = sum(Nb)) %>%
+      mutate(percent = Nb/C*100)%>%
+      mutate(cohort = cohort[counter])
+    ret_fam.count<- as.data.frame(table(ret$V1))
+    ret<- ret%>%
+      dplyr::slice(1)
+    ret_fam.count<- left_join(ret_fam.count, ret, by = c("Var1" = "V1"))
+    ret_fam.count<- ret_fam.count[order(ret_fam.count$Freq, decreasing = T),]
+    ret_fam.count$family<- c(ret_fam.count$Var1[1:10], rep("remaining families", 49))
+    ret_fam.count
+    
+})
+f<- data.frame(table(erv_anno_fam$V1))
+f<- f[order(-f$Freq),]
+f<- f[c(1:10),]
+
+erv_anno_fam.2<- erv_anno_fam
+erv_anno_fam.2$V1[!erv_anno_fam.2$V1 %in% f$Var1]<-"remaining fam"
+
+vst.df.plot.2<- as.data.frame(do.call(cbind, vst.df.plot))
+
+vst.df.plot.rbind<- rbind(vst.df.plot.2[,c(1,2,6,7,8)], 
+                         vst.df.plot.2[,c(9,10, 14,15,16)],
+                         vst.df.plot.2[,c(17,18,22,23,24)],
+                         vst.df.plot.2[,c(25,26,30,31,32)],
+                         vst.df.plot.2[,c(33,34,38,39,40)],
+                         vst.df.plot.2[,c(41,42,46,47,48)],
+                         vst.df.plot.2[,c(49,50,54,55,56)],
+                         vst.df.plot.2[,c(57,58,62,63,64)])
+vst.df.plot.rbind.mock<- vst.df.plot.rbind%>%
+  group_by(Var1)%>%
+  mutate(Sum= sum(Freq, na.rm = T))%>%
+  dplyr::slice(1)%>%
+  arrange(desc(Sum))
+
+vst.df.plot.rbind$Var1<- vst.df.plot.rbind$Var1<- factor(vst.df.plot.rbind$Var1, levels =  rev(vst.df.plot.rbind.mock$Var1))
+vst.df.plot.rbind$cohort<- factor(vst.df.plot.rbind$cohort, levels = cohort)
+
+##### Stacked Barplot:
+stack<- ggplot(vst.df.plot.rbind, aes(fill=cohort, y=Freq, x=Var1)) + 
+        geom_bar(position="stack", stat="identity") + 
+        theme_classic() +
+        xlab("ERV family") + ylab("# of expressed ERVs") +
+        coord_flip()+ ggtitle("ERV family level expression across all TCGA cohorts")
+
+stack + scale_fill_manual(values = c("#44AA99","#D55E00", "#DDCC77","#E69F00", "#332288", "#117733", "#6699CC", "#CC79A7"))
+
+##### Stacked + percent:
+stack_pt<- ggplot(vst.df.plot.rbind, aes(fill=family, y=Freq, x=cohort))+
+  geom_bar(position="fill", stat="identity") +
+  theme_classic() +
+  xlab("ERV family")
+
+colors<- c("#44AA99","#D55E00", "#DDCC77", "#E69F00", "#332288", "#117733", "#6699CC", "#CC79A7")
+stack_pt + theme(axis.text.x=element_text(colour=colors[unique(vst.df.plot.rbind$cohort)]))
+  
+
+##### Barplot with ERV expression numbers:
+TCGA_numbers<- data.frame(group= c("total", "PAAD", "LIHC", "KIRC", "COAD", "OV", "BLCA", "LUAD", "BRCA"),
+                          Freq = c(14968, 2673, 2229, 3338, 2275, 2620, 2732, 3060, 2966),
+                          cohort = c("Total", "Pancreatic adenocarcinoma (PAAD)",
+                                    "Liver hepatocellular carcinoma (LIHC)",
+                                    "Kidney renal clear cell carcinoma (KIRC)",
+                                    "Colon adenocarcinoma (COAD)",
+                                    "Ovarian serous cystadenocarcinoma (OV)",
+                                    "Urothelial bladder carcinoma (BLCA)",
+                                    "Lung adenocarcinoma (LUAD)",
+                                    "Breast invasive carcinoma (BRCA)"))
+TCGA_numbers$cohort<- factor(TCGA_numbers$cohort, levels = rev(c("Total", "Pancreatic adenocarcinoma (PAAD)",
+                                    "Liver hepatocellular carcinoma (LIHC)",
+                                    "Kidney renal clear cell carcinoma (KIRC)",
+                                    "Colon adenocarcinoma (COAD)",
+                                    "Ovarian serous cystadenocarcinoma (OV)",
+                                    "Urothelial bladder carcinoma (BLCA)",
+                                    "Lung adenocarcinoma (LUAD)",
+                                    "Breast invasive carcinoma (BRCA)")))
+TCGA_numbers$Freq<- as.numeric(TCGA_numbers$Freq)
+myPalette<- c("darkgrey","#44AA99","#D55E00", "#DDCC77", "#E69F00", "#332288", "#117733", "#6699CC", "#CC79A7")
+numbers<- ggplot(data=TCGA_numbers, aes(x=cohort, y=Freq)) +
+  geom_bar(stat="identity") + xlab("") + ylab("# of expressed ERVs")+
+  coord_flip() +theme_classic()
+
+numbers + theme(axis.text.y=element_text(colour=myPalette[TCGA_numbers$cohort]))+
+  theme(axis.text.y = element_text(size=25))+ theme(axis.text.x = element_text(size=10), axis.title.x = element_text(size = 15))+
+  geom_text(size=10,aes(label=c("14968", NA, NA, NA, NA, NA, NA, NA, NA)),position="stack",vjust=1, colour = "white", hjust = 1.5)+
+  geom_text(size=10,aes(label=c(NA,2673, 2229, 3338, 2275, 2620, 2732, 3060, 2966)),position="stack",vjust=1, colour = "black", hjust = -0.4)
+
+```
+
