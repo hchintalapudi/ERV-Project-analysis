@@ -102,13 +102,3 @@ gg_brca<-ggforest(cyt_brca_cox, data = cyt_brca_survdata, font.x.size = 5,
 
 grid.arrange(gg_paad, gg_lihc, gg_coad, gg_ov, gg_blca, gg_luad, gg_brca,  ncol=2,top="univariate Coxph with CYT as covariate \n forest plots of all cohorts")
 ```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
