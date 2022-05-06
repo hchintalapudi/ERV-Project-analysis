@@ -1,0 +1,82 @@
+---
+title: "PANCAN LASSO"
+author: "Himanshu Chintalapudi"
+date: "5/6/2022"
+output: html_document
+---
+
+```{r}
+library("cvTools")
+library("survival")
+library("glmnet")
+library("tidyverse")
+```
+
+
+
+```{r}
+glmnet_data<- read.csv("/dartfs/rc/lab/L/LeachLabSpace/TCGA/PANCAN/pancan_glmnet_data.csv", row.names=1)
+#####
+set.seed(12345)
+start_time <- Sys.time()
+# set the r repetition
+r_num=10
+# set the K-fold cross validation
+K = 5
+n_obs<-length(rownames(glmnet_data))
+
+lambda.min_i_mean<-list()
+lambda.min_i_mean.2<-list()
+lambda.min_i<-list()
+lambda.min_all<-list()
+lambda.min_final<-NULL
+r=1
+
+while(r<=r_num){
+  print(paste("Iteration",r, sep = " "), quote=F)
+  li = c()
+  cpi = list()
+  coeffs_i= list()
+  ### cross validation
+  cvt <- cvFolds(n_obs, K = K, R = 1, type = "random")
+  folds <- as.data.frame(cbind(c(rep(rep(1:K),5000))[1:n_obs],cvt$subsets))
+  colnames(folds) <- c("fold","index")
+  for (i in 1:cvt$K){
+    left_genes<-c()
+    print(paste("K =",i, sep = " "), quote=F)
+    # Lasso penalized regression
+    try(fit <- cv.glmnet(data.matrix(glmnet_data[,c(3:ncol(glmnet_data))]),as.matrix(Surv(glmnet_data$survival.time,glmnet_data$censor)),family = "cox",alpha=0.95, type.measure = "C", standardize = T))
+    try(coef.min <- coef(fit, s = "lambda.min"),silent=TRUE)
+    try(active.min <- which(coef.min != 0),silent=TRUE)
+    try(left_genes <- colnames(glmnet_data)[active.min],silent=TRUE)
+    if(length(left_genes)==0){
+      next
+    }
+    if(length(left_genes)>0){
+    try(li[i]<-fit$lambda.min)
+    #try(lambda.min_i_mean[i]<-mean(li[i]))
+    try(cpi[[i]] <- left_genes)
+    }
+  }
+  try(lambda.min_i[[r]]<-li)
+  #try(lambda.min_i_mean.2[[r]]<- lambda.min_i_mean)
+  try(lambda.min_i_mean[r]<-mean(li))
+  #try(lambda.min_all<-c(lambda.min_all, lambda.min_i_mean))
+  r=r+1
+  if(length(cpi)!=5){
+    next
+  }
+  #r=r+1
+  lambda.min_all[[length(lambda.min_all)+1]]<-c(lambda.min_all, lambda.min_i_mean)
+
+}
+
+lambda.min_final<- mean(unlist(lambda.min_i_mean))
+
+glmcoef<- coef(fit$glmnet.fit, s= lambda.min_final)
+glmcoeffs<- data.frame(name = glmcoef@Dimnames[[1]][glmcoef@i + 1], coefficient = glmcoef@x)
+
+write.csv(glmcoeffs, file = "/dartfs/rc/lab/L/LeachLabSpace/TCGA/PANCAN/pancan_lasso_glmcoeffs_K5_r10.csv")
+```
+
+
