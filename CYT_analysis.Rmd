@@ -1,0 +1,114 @@
+---
+title: "CYT analysis -PanCan"
+author: "Himanshu Chintalapudi"
+date: "5/5/2022"
+output: html_document
+---
+
+
+```{r}
+## CYT:
+cyt_paad<- readxl::read_excel("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA_CYT_scores.xlsx", sheet = 1, skip = 1)%>%
+  dplyr::rename(Sample = "...1")
+cyt_paad_survdata<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-PAAD/paad_cox_input_135.csv")%>%
+  dplyr::select(X, donor_survival_time, donor_vital_status)%>%
+  dplyr::left_join(cyt_paad, by = c("X" = "Sample"))%>%
+  column_to_rownames("X")
+
+cyt_paad_cox<- coxph(Surv(donor_survival_time, donor_vital_status) ~ CYT, data = cyt_paad_survdata)
+summary(cyt_paad_cox)
+gg_paad<- ggforest(cyt_paad_cox, data = cyt_paad_survdata, font.x.size = 5,
+                    main = "TCGA-PAAD")
+
+cyt_lihc<- readxl::read_excel("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA_CYT_scores.xlsx", sheet = 2, skip = 1)%>%
+  dplyr::rename(Sample = "...1")
+cyt_lihc_survdata<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LIHC/lihc_cox_input_0.50_2229.csv")%>%
+  dplyr::select(X, survival.time, censor)%>%
+  dplyr::left_join(cyt_lihc, by = c("X" = "Sample"))%>%
+  column_to_rownames("X")
+
+cyt_lihc_cox<- coxph(Surv(survival.time, censor) ~ CYT, data = cyt_lihc_survdata)
+summary(cyt_lihc_cox)
+gg_lihc<- ggforest(cyt_lihc_cox, data = cyt_lihc_survdata, font.x.size = 5,
+                    main = "TCGA-LIHC")
+
+cyt_blca<- readxl::read_excel("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA_CYT_scores.xlsx", sheet = "blca - blca_immune_scores", skip = 1)%>%
+  dplyr::rename(Sample = "...1")
+cyt_blca_survdata<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-BLCA/blca_cox_input_390.csv")%>%
+  dplyr::select(X, survival.time, censor)%>%
+  dplyr::left_join(cyt_blca, by = c("X" = "Sample"))%>%
+  column_to_rownames("X")%>%
+  mutate_if(~is.integer(.)|is.character(.),as.numeric)
+
+cyt_blca_cox<- coxph(Surv(survival.time, censor) ~ CYT, data = cyt_blca_survdata)
+gg_blca<- ggforest(cyt_blca_cox, data = cyt_blca_survdata, font.x.size = 5,
+                    main = "TCGA-BLCA")
+
+cyt_coad<- readxl::read_excel("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA_CYT_scores.xlsx", sheet = "coad - coad_immunes_scores", skip = 1)%>%
+  dplyr::rename(Sample = "...1")
+cyt_coad_survdata<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-COAD/coad_cox_input_0.50_2275.csv")%>%
+  dplyr::select(X, survival.time, censor)%>%
+  dplyr::left_join(cyt_coad, by = c("X" = "Sample"))%>%
+  column_to_rownames("X")%>%
+  mutate_if(~is.integer(.)|is.character(.),as.numeric)
+
+cyt_coad_cox<- coxph(Surv(survival.time, censor) ~ CYT, data = cyt_coad_survdata)
+summary(cyt_coad_cox)
+gg_coad<-ggforest(cyt_coad_cox, data = cyt_coad_survdata, font.x.size = 5,
+                   main = "TCGA-COAD")
+
+
+cyt_ov<- readxl::read_excel("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA_CYT_scores.xlsx", sheet = "ov - ov_immunes_scores", skip = 1)%>%
+  dplyr::rename(Sample = "...1")
+cyt_ov_survdata<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-OV/ov_cox_input_365.csv")%>%
+  dplyr::select(X, survival.time, censor)%>%
+  dplyr::left_join(cyt_ov, by = c("X" = "Sample"))%>%
+  column_to_rownames("X")%>%
+  mutate_if(~is.integer(.)|is.character(.),as.numeric)
+
+cyt_ov_cox<- coxph(Surv(survival.time, censor) ~ CYT, data = cyt_ov_survdata)
+summary(cyt_ov_cox)
+gg_ov<- ggforest(cyt_ov_cox, data = cyt_ov_survdata, font.x.size = 5,
+                  main = "TCGA-OV")
+
+
+cyt_luad<- readxl::read_excel("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA_CYT_scores.xlsx", sheet = "luad - luad_immune_scores", skip = 1)%>%
+  dplyr::rename(Sample = "...1")
+cyt_luad_survdata<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_cox_input_481.csv")%>%
+  dplyr::select(X, survival.time, censor)%>%
+  dplyr::left_join(cyt_luad, by = c("X" = "Sample"))%>%
+  column_to_rownames("X")%>%
+  mutate_if(~is.integer(.)|is.character(.),as.numeric)
+
+cyt_luad_cox<- coxph(Surv(survival.time, censor) ~ CYT, data = cyt_luad_survdata)
+summary(cyt_luad_cox)
+gg_luad<-ggforest(cyt_luad_cox, data = cyt_luad_survdata, font.x.size = 5,
+                   main = "TCGA-LUAD")
+
+
+cyt_brca<- readxl::read_excel("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA_CYT_scores.xlsx", sheet = "brca - brca_immunes_scores", skip = 1)%>%
+  dplyr::rename(Sample = "...1")
+cyt_brca_survdata<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-BRCA/brca_cox_input_445.csv")%>%
+  dplyr::select(X, survival.time, censor)%>%
+  dplyr::left_join(cyt_brca, by = c("X" = "Sample"))%>%
+  column_to_rownames("X")%>%
+  mutate_if(~is.integer(.)|is.character(.),as.numeric)
+
+cyt_brca_cox<- coxph(Surv(survival.time, censor) ~ CYT, data = cyt_brca_survdata)
+summary(cyt_brca_cox)
+gg_brca<-ggforest(cyt_brca_cox, data = cyt_brca_survdata, font.x.size = 5,
+                   main = "TCGA-BRCA",
+                   cpositions = c(0.02, 0.22, 0.4))
+
+grid.arrange(gg_paad, gg_lihc, gg_coad, gg_ov, gg_blca, gg_luad, gg_brca,  ncol=2,top="univariate Coxph with CYT as covariate \n forest plots of all cohorts")
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
