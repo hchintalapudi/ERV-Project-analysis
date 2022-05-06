@@ -1,0 +1,72 @@
+---
+title: "TCGA-PAAD analysis"
+author: "Himanshu Chintalapudi"
+date: "5/5/2022"
+output: html_document
+---
+
+```{r}
+source("libs.R")
+
+```
+
+
+```{r}
+load("/Users/hchintalapudi/Desktop/work/TCGA analysis/Rdata/TCGA_deseq_135.Rdata")
+TCGA_metadata_135<- TCGA_metadata_135%>%
+  column_to_rownames("donor_sample_id")
+table(rownames(TCGA_metadata_135) == colnames(TCGA_counts.telescope_135))
+
+dds_PAAD.135<- DESeqDataSetFromMatrix(countData =  TCGA_counts.telescope_135, colData = TCGA_metadata_135, design = ~Survival )
+dds_PAAD.135$Survival<- factor(dds_PAAD.135$Survival, levels = c("STS", "LTS"))
+table(TCGA_sizefactors_135$Sample.ID == rownames(TCGA_metadata_135))
+sizeFactors(dds_PAAD.135)<- TCGA_sizefactors_135$TCGA_sizefactors_135
+
+dds_PAAD.135.2<-dds_PAAD.135[rowSums(counts(dds_PAAD.135)>=10)>=67.5,]
+#dds_lihc.2<- dds_lihc[rowSums(counts(dds_lihc)>=10)>=171,]
+
+table(rowSums(counts(dds_PAAD.135)>=10)>=67.5)
+#table(rowSums(counts(dds_lihc)>=10)>= 171)
+
+paad.vst<- as.data.frame(assay(vst(dds_PAAD.135.2, blind = F)))
+write.csv(paad.vst, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-PAAD/paad_vst_0.50_2673.csv")
+paad.vst<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-PAAD/paad_vst_0.50_2673.csv", row.names = 1, check.names = F, stringsAsFactors = F)
+
+TCGA_counts.tel_135.2_vsd_surv.2<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/Coxph_analysis_02:15:21/TCGA_Coxph_input.csv", row.names = 1)
+TCGA_counts.tel_135.2_vsd_surv.2<- TCGA_counts.tel_135.2_vsd_surv.2[match(colnames(paad.vst),rownames(TCGA_counts.tel_135.2_vsd_surv.2)),]
+
+table(rownames(TCGA_counts.tel_135.2_vsd_surv.2) == colnames(paad.vst))
+
+paad_cox.input<- data.frame(TCGA_counts.tel_135.2_vsd_surv.2[,c(1:5)],t(paad.vst))
+
+paad_cox.input$donor_survival_time<- as.numeric(paad_cox.input$donor_survival_time)
+paad_cox.input$donor_vital_status<- as.numeric(paad_cox.input$donor_vital_status)
+paad_cox.input$Age<- as.numeric(paad_cox.input$Age)
+
+paad_cox.input[,c(4,5)]<- lapply(paad_cox.input[,c(4,5)], as.factor)
+
+write.csv(paad_cox.input, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-PAAD/paad_cox_input_135.csv")
+
+paad_res <- RegParallel(
+    data = paad_cox.input,
+    formula = 'Surv(donor_survival_time, donor_vital_status) ~ [*] + Age + AJCC.pathology.stage  + Tumor.Grade',
+    FUN = function(formula, data)
+      coxph(formula = formula,
+        data = data,
+        ties = 'breslow',
+        singular.ok = TRUE),
+    FUNtype = 'coxph',
+    variables = colnames(paad_cox.input)[6:ncol(paad_cox.input)],
+    blocksize = 2000,
+    cores = 2,
+    nestedParallel = FALSE,
+    conflevel = 95,
+    excludeTerms = c("AJCC.pathology.stage","Age","Tumor.Grade"),
+    excludeIntercept = TRUE,
+    p.adjust = 'fdr')
+
+write.csv(paad_res, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-PAAD/paad_cox_res_0.5_2673.csv")
+
+paad_tpm<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/TCGA_cellularcounts_TPM_wUpdatedGeneLengths_135.csv", row.names = 1, check.names = F)
+```
+
