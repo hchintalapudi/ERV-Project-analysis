@@ -333,3 +333,107 @@ numbers + theme(axis.text.y=element_text(colour=myPalette[TCGA_numbers$cohort]))
 
 ```
 
+```{r}
+##### Hazard Ratio Plots for all cohorts:
+# Load Coxph results files for all cohorts
+brca_cox_res<- read.csv()
+lihc_cox_res<- read.csv()
+luad_cox_res<- read.csv()
+ov_cox_res<- read.csv()
+kirc_cox_res<- read.csv()
+paad_cox_res<- read.csv()
+brca_cox_res<- read.csv()
+coad_cox_res<- read.csv()
+
+blca<- blca_cox_res$Variable[blca_cox_res$P<0.05 & blca_cox_res$HR<1]
+lihc<- lihc_cox_res$Variable[lihc_cox_res$P<0.05 & lihc_cox_res$HR<1]
+luad<- luad_cox_res$Variable[luad_cox_res$P<0.05 & luad_cox_res$HR<1]
+ov<- ov_cox_res$Variable[ov_cox_res$P<0.05 & ov_cox_res$HR<1]
+kirc<- kirc_cox_res$Variable[kirc_cox_res$P<0.05& kirc_cox_res$HR<1]
+paad<- paad_cox_res$Variable[paad_cox_res$P<0.05& paad_cox_res$HR<1]
+brca<- brca_cox_res$Variable[brca_cox_res$P<0.05& brca_cox_res$HR<1]
+
+
+data_brca<- brca_cox_res[brca_cox_res$Variable %in% brca,]
+data_brca$group<- "TCGA-BRCA"
+data_brca$col<- "#CC79A7"
+data_brca<- data_brca[,c(1,10:13,17,18)]
+
+ggplot(data = data_brca,aes(HR, Variable, color = group))+ 
+  labs(title = "Coxph significant ERVs at p<0.05 & HR<1, adjusted for Age& AJCC Tumor Stage",x="Hazard Ratios (95% CI)", y=paste0(length(unique(data_brca$Variable)),"  ","ERVs"), color = "group")+
+  geom_point(size = 2)  +
+  geom_vline(xintercept = 1, linetype="dashed", size = 0.5) + 
+  scale_x_continuous(breaks = seq(0,3,0.5)) + geom_errorbar(data = data_brca, mapping=aes(y=Variable, xmax=HRupper, xmin=HRlower), width=0.2, size=0.1) + guides(fill=guide_legend(title="")) + 
+  theme(axis.text.y = element_text(size = 7),axis.ticks.y = element_blank()) +
+  scale_color_manual(values = "#CC79A7")
+
+
+data_paad<- paad_cox_res[paad_cox_res$Variable %in% paad,]
+data_paad$group<- "TCGA-PAAD"
+data_paad$col<- "#44AA99"
+data_paad<- data_paad[,c(1,10:13,17,18)]
+
+ggplot(data = data_paad,aes(HR, Variable, color = group))+
+  labs(title = "Coxph significant ERVs at p<0.05 & HR<1, adjusted for Age, Tumor Grade & AJCC Tumor Stage",x="Hazard Ratios (95% CI)", y=paste0(length(unique(data_paad$Variable)),"  ","ERVs"), color = "group")+
+  geom_point(size = 2)  +geom_vline(xintercept = 1, linetype="dashed", size = 0.5)+
+  scale_x_continuous(breaks = seq(0,3,0.5)) + geom_errorbar(data = data_paad, mapping=aes(y=Variable, xmax=HRupper, xmin=HRlower), width=0.2, size=0.1) + guides(fill=guide_legend(title="")) +
+  theme(axis.text.y = element_text(size = 2),axis.ticks.y = element_blank()) +
+  scale_color_manual(values = "#44AA99")
+
+data_blca<- blca_cox_res[blca_cox_res$Variable %in% blca,]
+data_blca$group<- "TCGA-BLCA"
+data_blca$col<- "#117733"
+data_blca<- data_blca[,c(1,10:13,17,18)]
+
+ggplot(data = data_blca,aes(HR, Variable, color = group))+ 
+  labs(title = "Coxph significant ERVs at p<0.05 & HR<1, adjusted for Age & AJCC Tumor Stage",x="Hazard Ratios (95% CI)", y=paste0(length(unique(data_blca$Variable)),"  ","ERVs"), color = "group")+geom_point(size = 2)  +
+  geom_vline(xintercept = 1, linetype="dashed", size = 0.5) + scale_x_continuous(breaks = seq(0,3,0.5)) +
+  geom_errorbar(data = data_blca.1, mapping=aes(y=Variable, xmax=HRupper, xmin=HRlower), width=0.2, size=0.1) + guides(fill=guide_legend(title="")) + theme(axis.text.y = element_text(size = 2),axis.ticks.y = element_blank())+
+  scale_color_manual(values = "#117733")
+
+data_lihc<- lihc_cox_res[lihc_cox_res$Variable %in% lihc,]
+data_lihc$group<- "TCGA-LIHC"
+data_lihc$col<- "#D55E00"
+
+ggplot(data = data_lihc,aes(HR, Variable, color = group))+
+  labs(title = "Coxph significant ERVs at p<0.05 & HR<1, also adjusted for Age, AJCC Tumor Stage & Tumor Grade",x="Hazard Ratios (95% CI)", y=paste0(length(unique(data_lihc$Variable)),"  ","ERVs"), color = "Group")+
+  geom_point(size = 2)  +geom_vline(xintercept = 1, linetype="dashed", size = 0.5) +
+  scale_x_continuous(breaks = seq(0,3,0.5)) + geom_errorbar(data = data_lihc, mapping=aes(y=Variable, xmax=HRupper, xmin=HRlower), width=0.2, size=0.1) + guides(fill=guide_legend(title="")) +
+  theme_classic()+
+  theme(axis.text.y = element_text(size = 7),axis.ticks.y = element_blank())
+
+data_luad<- luad_cox_res[luad_cox_res$Variable %in% luad,]
+data_luad$group<- "TCGA-LUAD"
+data_luad$col<- "#6699CC"
+
+ggplot(data = data_luad,aes(HR, Variable, color = group))+
+  labs(title = "Coxph significant ERVs at p<0.05 & HR<1, also adjusted for Age, AJCC Tumor Stage",x="Hazard Ratios (95% CI)", y=paste0(length(unique(data_luad$Variable)),"  ","ERVs"), color = "Group")+
+  geom_point(size = 2)  +geom_vline(xintercept = 1, linetype="dashed", size = 0.5) +
+  scale_x_continuous(breaks = seq(0,3,0.5)) +
+  geom_errorbar(data = data_luad, mapping=aes(y=Variable, xmax=HRupper, xmin=HRlower), width=0.2, size=0.1) + guides(fill=guide_legend(title="")) +
+  theme_classic()+ theme(axis.text.y = element_text(size = 3),axis.ticks.y = element_blank()) +
+  scale_color_manual(values = "#6699CC")
+
+data_ov<- ov_cox_res[ov_cox_res$Variable %in% ov,]
+data_ov$group<- "TCGA-OV"
+data_ov$col<- "#332288"
+
+ggplot(data = data_ov,aes(HR, Variable, color = group))+
+  labs(title = "Coxph significant ERVs at p<0.05 & HR<1, also adjusted for Age, AJCC Tumor Stage",x="Hazard Ratios (95% CI)", y=paste0(length(unique(data_ov$Variable)),"  ","ERVs"), color = "Group")+geom_point(size = 1)+
+  geom_vline(xintercept = 1, linetype="dashed", size = 0.5) + scale_x_continuous(breaks = seq(0,3,0.5)) +
+  geom_errorbar(data = data_ov, mapping=aes(y=Variable, xmax=HRupper, xmin=HRlower), width=0.2, size=0.1) + guides(fill=guide_legend(title="")) + theme_classic()+ theme(axis.text.y = element_text(size = 5),axis.ticks.y = element_blank()) + scale_color_manual(values = "#332288")
+
+
+data_kirc<- kirc_cox_res[kirc_cox_res$Variable %in% kirc,]
+data_kirc$group<- "TCGA-KIRC"
+data_kirc$col<- "#DDCC77"
+data_kirc<- data_kirc[,c(1,10:13,17,18)]
+
+ggplot(data = data_kirc,aes(HR, Variable, color = group))+
+  labs(title = "Coxph significant ERVs at p<0.05 & HR<1, adjusted for Age, AJCC Tumor Stage & Tumor Grade",x="Hazard Ratios (95% CI)", y=paste0(length(unique(data_kirc$Variable)),"  ","ERVs"), color = "Group")+geom_point(size = 1)+
+  geom_vline(xintercept = 1, linetype="dashed", size = 0.5) +
+  scale_x_continuous(breaks = seq(0,3,0.5)) + geom_errorbar(data = data_kirc, mapping=aes(y=Variable, xmax=HRupper, xmin=HRlower), width=0.2, size=0.1) + guides(fill=guide_legend(title="")) +
+  theme_classic()+ theme(axis.text.y = element_text(size = 7),axis.ticks.y = element_blank()) +
+  scale_color_manual(values = "#DDCC77")
+```
+
