@@ -1,0 +1,218 @@
+---
+title: "TCGA-KIRC"
+author: "Himanshu Chintalapudi"
+date: "5/11/2022"
+output: html_document
+---
+
+```{r}
+source("libs.R")
+```
+
+
+```{r}
+## TCGA-KIRC:
+
+kirc_metadata<- read.delim("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/KIRC_gdc_sample_sheet.2021-11-12.tsv")
+kirc_metadata<- kirc_metadata[kirc_metadata$Sample.Type %in% "Primary Tumor",]
+
+## If 01A and 01B are present for one sample, remove 01B; or retain 01B:
+kirc_metadata<-kirc_metadata%>%
+  mutate(tmp1 = sapply(strsplit(kirc_metadata$Sample.ID, "-"), function(x) x[[4]][[1]]))%>%
+  group_by(Case.ID)%>%
+  mutate(flag = ifelse(("01A" %in% tmp1 & "01B" %in% tmp1 & tmp1 == "01B"), 1 ,0))%>%
+  filter(flag !=1)
+kirc_metadata_dups<- kirc_metadata[duplicated(kirc_metadata$Sample.ID),]
+
+## Removing following files from the pool of duplicates:
+kirc_metadata<- kirc_metadata[!kirc_metadata$File.ID %in% c("71a1f263-b200-47a2-834e-cf46272331e8",
+                                                            "4835a20d-49e0-4ad7-9488-1231a4c13b05",
+                                                            "02d17427-b107-4494-9eee-4e421a3a112a",
+                                                            "1f995f73-3321-4309-a8a8-a86981a5fa61"),]
+## checks
+kirc_metadata[duplicated(kirc_metadata$Sample.ID),]
+#----------------
+kirc_biospecimen<- read.delim("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/biospecimen.project-TCGA-KIRC.2022-03-14/portion.tsv")
+kirc_biospecimen.2<- read.delim("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/biospecimen.project-TCGA-KIRC.2022-03-14/sample.tsv")
+#-----------------
+kirc_samples_filt_Ali<- read.table("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/case_set_KIRC_ERV__no_prior_tx.2021-11-18.tsv", header = T)
+kirc_samples_filt_Ali<- left_join(kirc_samples_filt_Ali, kirc_metadata.2[,c(1,2)], by = c("id" = "bcr_patient_uuid"))
+kirc_samples_filt_Ali<- left_join(kirc_samples_filt_Ali, kirc_metadata[,c(1,2,6,7)], by = c("bcr_patient_barcode" = "Case.ID"))
+
+write.csv(kirc_samples_filt_Ali, "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/case_set_KIRC_ERV__no_prior_tx.2021-11-18_updated.tsv")
+kirc_samples_filt_Ali<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/case_set_KIRC_ERV__no_prior_tx.2021-11-18_updated.tsv", row.names = 1, stringsAsFactors = F)
+
+
+samples<- kirc_samples_filt_Ali$File.Name
+samples<- gsub(x=samples, pattern = ".bam", replacement = "")
+kirc_tel_files<- list.files(path = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/Telescope/")
+kirc_tel_files<- gsub(x=as.list(kirc_tel_files), pattern ='_sorted-telescope_report.tsv', replacement = "")
+table(samples %in% kirc_tel_files)
+
+
+
+
+#--- Final Counts from Telescope:
+kirc_counts.telescope <- lapply(samples,
+                           function(s){
+                               tmp <- read.table(
+                                   file.path('/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/Telescope/',paste0(s, '_sorted-telescope_report.tsv')),
+                                   sep='\t', header=T, stringsAsFactors=F)
+                               ret <- data.frame(transcript=genes$transcript_id, stringsAsFactors=F) %>%
+                                   left_join(tmp, by='transcript') %>%
+                                   dplyr::mutate(
+                                       gene_id = transcript,
+                                       count = final_count
+                                   ) %>%
+                                   dplyr::select(gene_id, count)
+                               ret[is.na(ret)] <- 0
+                               stopifnot(all(ret$gene_id == genes$transcript_id))
+                               ret$gene_id <- NULL
+                               names(ret) <- c(s)
+                               ret
+                           }) %>%
+    bind_cols
+rownames(kirc_counts.telescope)<- genes$transcript_id
+kirc_samples_filt_Ali$File.Name<- gsub(x=kirc_samples_filt_Ali$File.Name, pattern = ".bam", replacement = "")
+kirc_counts.telescope<- kirc_counts.telescope[kirc_samples_filt_Ali$File.Name]
+table(kirc_samples_filt_Ali$File.Name == colnames(kirc_counts.telescope))
+
+colnames(kirc_counts.telescope)<- kirc_samples_filt_Ali$Sample.ID
+##** 03-14-2022:
+write.csv(kirc_counts.telescope, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC_Telescope_finalcounts_463.csv")
+
+
+## SIZE Factors for DESeq2:
+metrics.list <- lapply(samples, 
+                       function(s){
+                           f <- file.path('/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/Telescope/',paste0(s, '_sorted-telescope_report.tsv'))
+                           if(file.exists(f)) {
+                               print(f)
+                               h <- readLines(f, 1) %>% strsplit(., '\t') %>% unlist
+                               rstr <- sapply(strsplit(h[-c(1,2)], ':'), function(t) as.numeric(unlist(t[2][1])))
+                               names(rstr) <- sapply(strsplit(h[-c(1,2)], ':'), function(t) t[1])
+                           } else{
+                               rstr <- c(NA)
+                           }
+                           rstr
+                       }
+)
+mn <- unique(do.call(c, lapply(metrics.list, names)))
+met.ts <- lapply(metrics.list, 
+                 function(m) {
+                     ret <- sapply(mn, function(x) m[x])
+                     names(ret) <- gsub('\\..*', '', names(ret))
+                     ret
+                 }) %>% do.call(rbind, .) %>% data.frame
+names(met.ts) <- paste(names(met.ts), 'ts', sep='.')
+met.ts$sample<- samples
+kirc_metrics<- met.ts
+kirc_metrics$sample
+kirc_metrics<- left_join(kirc_metrics, kirc_samples_filt_Ali, by = c("sample"="File.Name"))
+
+
+#--- Add library size (total frags mapped) columns
+kirc_metrics$mapped_frags.bt2 <- kirc_metrics$pair_mapped.ts + kirc_metrics$pair_mixed.ts + kirc_metrics$single_mapped.ts
+
+write.csv(kirc_metrics, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/kirc_metrics_463.csv")
+
+# Function for calculating size factors
+calculateSizeFactors <- function(mapped_frags) {
+    geomean <- expm1(mean(log1p(mapped_frags)))
+    mapped_frags / geomean
+}
+kirc_sizefactors<- as.data.frame(calculateSizeFactors(kirc_metrics$mapped_frags.bt2))
+kirc_sizefactors$Sample<- kirc_samples_filt_Ali$Sample.ID
+kirc_sizefactors<- kirc_sizefactors[,c(2,1)]
+colnames(kirc_sizefactors)<- c("Sample","sizefactor")
+write.csv(kirc_sizefactors, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/Telescope_kirc_sizefactors_463.csv", row.names = F)
+kirc_sizefactors.tmp<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/Telescope_kirc_sizefactors.csv")
+
+kirc_metadata.2<- read.delim("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/gdc_download_20210913_155300.087861/8c43d640-c32d-439c-8c46-22c46e8f9ba0/nationwidechildrens.org_clinical_patient_kirc.txt")
+kirc_metadata.2<- kirc_metadata.2[-c(1,2),]
+kirc_metadata.2<- kirc_metadata.2%>%
+  mutate(bcr_patient_uuid=tolower(bcr_patient_uuid))
+kirc_metadata.2<- kirc_metadata.2[,c("bcr_patient_barcode","vital_status","age_at_initial_pathologic_diagnosis", "ajcc_pathologic_tumor_stage", "tumor_grade", "last_contact_days_to","death_days_to")]
+kirc_metadata.2<- left_join(kirc_metadata.2, kirc_samples_filt_Ali[,c(2,5)], by = "bcr_patient_barcode")
+kirc_metadata.2<- kirc_metadata.2[kirc_metadata.2$Sample.ID %in% kirc_samples_filt_Ali$Sample.ID,]
+
+set.seed(12345)
+kirc_metadata.2$survival.time <- as.integer(ifelse(kirc_metadata.2$last_contact_days_to == "[Not Available]",
+                                   kirc_metadata.2$death_days_to, kirc_metadata.2$last_contact_days_to))
+kirc_metadata.2$survival.time[kirc_metadata.2$survival.time<0]<-0
+kirc_metadata.2$ajcc_pathologic_tumor_stage[kirc_metadata.2$ajcc_pathologic_tumor_stage == "[Not Available]" | kirc_metadata.2$ajcc_pathologic_tumor_stage == "[Discrepancy]"]<- NA
+
+
+kirc_metadata.2<- kirc_metadata.2%>%
+  mutate(censor = ifelse(vital_status == "Alive", 0, ifelse(vital_status == "Dead", 1, NA)))
+kirc_metadata.2<- kirc_metadata.2[,c(8,9,10,1:5)]
+kirc_metadata.2$tumor_grade[kirc_metadata.2$tumor_grade == "[Not Available]"]<- NA
+
+kirc_metadata.2[duplicated(kirc_metadata.2$Sample.ID),]
+kirc_metadata.2<- unique(kirc_metadata.2)
+
+## get vst counts:
+kirc_metadata_deseq<- kirc_metadata.2[,c(1,2)]
+rownames(kirc_metadata_deseq)<- NULL
+median(kirc_metadata_deseq$survival.time)
+kirc_metadata_deseq<- kirc_metadata_deseq%>%
+  mutate(Survival = ifelse(survival.time>=967, "LTS", ifelse(survival.time<=967, "STS",NA)))%>%
+  column_to_rownames("Sample.ID")%>%
+  dplyr::select(-1)
+
+kirc_counts.telescope<- kirc_counts.telescope[rownames(kirc_metadata_deseq)]
+table(colnames(kirc_counts.telescope) == rownames(kirc_metadata_deseq))
+
+dds_kirc<- DESeqDataSetFromMatrix(countData = kirc_counts.telescope, colData =kirc_metadata_deseq, design = ~Survival)
+dds_kirc$Survival<- factor(dds_kirc$Survival, levels = c("STS", "LTS"))
+kirc_sizefactors<- kirc_sizefactors[match(rownames(kirc_metadata_deseq), kirc_sizefactors$Sample),]
+table(rownames(kirc_metadata_deseq) == kirc_sizefactors$Sample)
+
+sizeFactors(dds_kirc)<- kirc_sizefactors$sizefactor
+dds_kirc.2<- dds_kirc[rowSums(counts(dds_kirc)>=10)>=231.5,]
+table(rowSums(counts(dds_kirc)>=10)>=231.5)
+
+kirc_vst<- as.data.frame(assay(vst(dds_kirc.2, blind = F)))
+write.csv(kirc_vst, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/kirc_vst_3338_463.csv")
+kirc_vst<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/kirc_vst_3338_463.csv", row.names = 1, check.names = F)
+```
+
+
+```{r}
+table(colnames(kirc_vst) == kirc_metadata.2$Sample.ID)
+
+kirc_cox_input<- data.frame(kirc_metadata.2[,c("Sample.ID","survival.time","censor","age_at_initial_pathologic_diagnosis", "ajcc_pathologic_tumor_stage", "tumor_grade")], t(kirc_vst))
+rownames(kirc_cox_input)<- NULL
+kirc_cox_input<- kirc_cox_input%>%
+  column_to_rownames("Sample.ID")
+
+kirc_cox_input<- kirc_cox_input[complete.cases(kirc_cox_input),]
+
+kirc_cox_input[,c(1,2,3)]<- lapply(kirc_cox_input[,c(1,2,3)], as.numeric)
+kirc_cox_input[,c(4,5)]<- lapply(kirc_cox_input[,c(4,5)], as.factor)
+
+
+## Cox with RegParalell:
+kirc_cox_res<-RegParallel(
+    data = kirc_cox_input,
+    formula = 'Surv(survival.time, censor) ~ [*] + age_at_initial_pathologic_diagnosis + ajcc_pathologic_tumor_stage + tumor_grade',
+    FUN = function(formula, data)
+      coxph(formula = formula,
+        data = data,
+        ties = 'breslow',
+        singular.ok = TRUE),
+    FUNtype = 'coxph',
+    variables = colnames(kirc_cox_input)[6:ncol(kirc_cox_input)],
+    blocksize = 3000,
+    cores = 2,
+    nestedParallel = FALSE,
+    conflevel = 95,
+    excludeTerms = c("age_at_initial_pathologic_diagnosis", "ajcc_pathologic_tumor_stage", "tumor_grade"),
+    excludeIntercept = TRUE,
+    p.adjust = 'fdr')
+write.csv(kirc_cox_input, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/kirc_cox_input_463.csv")
+kirc_cox_input<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/kirc_cox_input_463.csv")
+write.csv(kirc_cox_res, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/KIRC-vst_cox_results_463.csv")
+kirc_cox_res<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/KIRC-vst_cox_results_463.csv", row.names = 1)
+kirc_cox_res_tmp<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/KIRC-vst_cox_results.csv", row.names = 1)
+```
