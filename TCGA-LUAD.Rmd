@@ -1,0 +1,320 @@
+---
+title: "TCGA-LUAD"
+author: "Himanshu Chintalapudi"
+date: "5/11/2022"
+output: html_document
+---
+
+```{r}
+source("libs.R")
+
+```
+
+```{r}
+## TCGA-LUAD:
+
+luad_metadata<- read.delim("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/LUAD_gdc_sample_sheet.2021-11-11 (1).tsv")
+
+luad_metadata$File.Name<- gsub(x = luad_metadata$File.Name, pattern = ".bam", replacement = "")
+
+
+## removing the only '-01C' sample as there's a relevant -01A sample"
+luad_metadata<- luad_metadata[!grepl("-11A|-02|-11B|-01C", luad_metadata$Sample.ID),]
+## If 01A and 01B are present for one sample, remove 01B; or retain 01B:
+luad_metadata<-luad_metadata%>%
+  mutate(tmp1 = sapply(strsplit(luad_metadata$Sample.ID, "-"), function(x) x[[4]][[1]]))%>%
+  group_by(Case.ID)%>%
+  mutate(flag = ifelse(("01A" %in% tmp1 & "01B" %in% tmp1 & tmp1 == "01B"), 1 ,0))%>%
+  filter(flag !=1)
+
+luad_metadata_dups<- luad_metadata[duplicated(luad_metadata$Sample.ID),]
+
+## removing following samples based on read length and lexicographical sorting of aliquot id
+luad_metadata<- luad_metadata[!luad_metadata$File.Name %in% c("9f809399-b8bf-4a21-a703-14464e6594eb_gdc_realn_rehead", "3d44d6c3-5dcf-42ee-8ebe-dcdaad30493c_gdc_realn_rehead", "0330e749-318e-4de9-9c99-1443594b6360_gdc_realn_rehead",  "f493fc9c-abd8-4623-b03b-6300c13a3198_gdc_realn_rehead",
+  "74be9457-39ce-4029-9076-53b0e57d2067_gdc_realn_rehead", "f09dc623-3571-49dd-a03c-39d2339bee6b_gdc_realn_rehead",
+  "c0994e02-1842-4736-a010-78275693e2ab_gdc_realn_rehead", "d04d83a4-fbe1-4b6a-a48d-2950394a67bb_gdc_realn_rehead",
+  "418985cf-3f58-4673-9303-961204e7c470_gdc_realn_rehead"),]
+
+# checking lex sort:
+require('gtools')
+n<- c("A278", "1858")
+mixedsort(n)
+
+samples<- as.character(luad_qual.cases$File.Name)
+
+
+luad_samples_filt_Ali<- read.table("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/case_set_LUAD_ERV__no_prior_tx.2021-11-18.tsv", header = T)
+luad_samples_filt_Ali<- left_join(luad_samples_filt_Ali, luad_metadata.2[,c(1,2)],  by = c("id" = "bcr_patient_uuid"))
+luad_samples_filt_Ali<- left_join(luad_samples_filt_Ali, luad_metadata[,c(1,2,6,7)], by = c("bcr_patient_barcode" = "Case.ID"))
+
+write.csv(luad_samples_filt_Ali, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/case_set_LUAD_ERV__no_prior_tx.2021-11-18_updated.tsv")
+
+luad_sample_list<- luad_samples_filt_Ali$File.Name
+write.table(luad_sample_list, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_q.samples_list.txt", row.names = F, quote = F)
+luad_qual.cases<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/case_set_LUAD_ERV__no_prior_tx.2021-11-18_updated.tsv", row.names = 1, stringsAsFactors = F, check.names = F)
+
+
+
+
+#--- Final Counts from Telescope:
+luad_counts.telescope <- lapply(samples,
+                           function(s){
+                               tmp <- read.table(
+                                   file.path('/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/Telescope/',paste0(s, '_sorted-telescope_report.tsv')),
+                                   sep='\t', header=T, stringsAsFactors=F)
+                               ret <- data.frame(transcript=genes$transcript_id, stringsAsFactors=F) %>%
+                                   left_join(tmp, by='transcript') %>%
+                                   dplyr::mutate(
+                                       gene_id = transcript,
+                                       count = final_count
+                                   ) %>%
+                                   dplyr::select(gene_id, count)
+                               ret[is.na(ret)] <- 0
+                               stopifnot(all(ret$gene_id == genes$transcript_id))
+                               ret$gene_id <- NULL
+                               names(ret) <- c(s)
+                               ret
+                           }) %>%
+    bind_cols
+rownames(luad_counts.telescope)<- genes$transcript_id
+
+table(luad_qual.cases$File.Name == colnames(luad_counts.telescope))
+
+colnames(luad_counts.telescope)<- luad_qual.cases$Sample.ID
+#colnames(luad_counts.telescope)<- luad_metadata$File.ID
+write.csv(luad_counts.telescope, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD_Telescope_finalcounts_481.csv")
+luad_counts.telescope<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD_Telescope_finalcounts_481.csv", check.names = F, stringsAsFactors = F, row.names = 1)
+
+
+## SIZE Factors for DESeq2:
+metrics.list <- lapply(samples, 
+                       function(s){
+                           f <- file.path('/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/Telescope/',paste0(s, '_sorted-telescope_report.tsv'))
+                           if(file.exists(f)) {
+                               print(f)
+                               h <- readLines(f, 1) %>% strsplit(., '\t') %>% unlist
+                               rstr <- sapply(strsplit(h[-c(1,2)], ':'), function(t) as.numeric(unlist(t[2][1])))
+                               names(rstr) <- sapply(strsplit(h[-c(1,2)], ':'), function(t) t[1])
+                           } else{
+                               rstr <- c(NA)
+                           }
+                           rstr
+                       }
+)
+mn <- unique(do.call(c, lapply(metrics.list, names)))
+met.ts <- lapply(metrics.list, 
+                 function(m) {
+                     ret <- sapply(mn, function(x) m[x])
+                     names(ret) <- gsub('\\..*', '', names(ret))
+                     ret
+                 }) %>% do.call(rbind, .) %>% data.frame
+names(met.ts) <- paste(names(met.ts), 'ts', sep='.')
+met.ts$sample<- samples
+luad_metrics<- met.ts
+luad_metrics$sample
+luad_metrics<- left_join(luad_metrics, luad_metadata[,c(1, 2,6,7)], by = c("sample"="File.Name"))
+
+#--- Add library size (total frags mapped) columns
+luad_metrics$mapped_frags.bt2 <- luad_metrics$pair_mapped.ts + luad_metrics$pair_mixed.ts + luad_metrics$single_mapped.ts
+write.csv(luad_metrics, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_metrics.csv")
+
+# Function for calculating size factors
+calculateSizeFactors <- function(mapped_frags) {
+    geomean <- expm1(mean(log1p(mapped_frags)))
+    mapped_frags / geomean
+}
+luad_sizefactors<- as.data.frame(calculateSizeFactors(luad_metrics$mapped_frags.bt2))
+luad_sizefactors$Sample<- luad_qual.cases$Sample.ID
+luad_sizefactors<- luad_sizefactors[,c(2,1)]
+colnames(luad_sizefactors)<- c("Sample","sizefactor")
+write.csv(luad_sizefactors, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/Telescope_luad_sizefactors.csv", row.names = F)
+luad_sizefactors<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/Telescope_luad_sizefactors.csv", stringsAsFactors = F)
+
+luad_metadata.2<- read.delim("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/gdc_download_20210913_160434.288924/42bf5eb2-bc49-45be-b18a-290f712b006c/nationwidechildrens.org_clinical_patient_luad.txt")
+luad_metadata.2<- luad_metadata.2[-c(1,2),]
+luad_metadata.2<- luad_metadata.2%>%
+  mutate(bcr_patient_uuid = tolower(bcr_patient_uuid))
+luad_metadata.2<- luad_metadata.2[,c("bcr_patient_barcode","vital_status","age_at_initial_pathologic_diagnosis", "ajcc_pathologic_tumor_stage", "last_contact_days_to","death_days_to")]
+luad_metadata.2<- left_join(luad_metadata.2, luad_metadata[,c(6,7,8)], by = c("bcr_patient_barcode" = "Case.ID"))
+luad_metadata.2<- luad_metadata.2[luad_metadata.2$Sample.ID %in% luad_qual.cases$Sample.ID,]
+
+set.seed(12345)
+luad_metadata.2$survival.time <- as.integer(ifelse(luad_metadata.2$last_contact_days_to == "[Not Available]",
+                                   luad_metadata.2$death_days_to, luad_metadata.2$last_contact_days_to))
+luad_metadata.2$survival.time[luad_metadata.2$survival.time<0]<-0
+luad_metadata.2$ajcc_pathologic_tumor_stage[luad_metadata.2$ajcc_pathologic_tumor_stage == "[Not Available]"]<- NA
+luad_metadata.2$ajcc_pathologic_tumor_stage[luad_metadata.2$ajcc_pathologic_tumor_stage == "Stage IA" | luad_metadata.2$ajcc_pathologic_tumor_stage == "Stage IB"]<- "Stage I"
+luad_metadata.2$ajcc_pathologic_tumor_stage[luad_metadata.2$ajcc_pathologic_tumor_stage == "Stage IIA" | luad_metadata.2$ajcc_pathologic_tumor_stage == "Stage IIB"]<- "Stage II"
+luad_metadata.2$ajcc_pathologic_tumor_stage[luad_metadata.2$ajcc_pathologic_tumor_stage == "Stage IIIA" | luad_metadata.2$ajcc_pathologic_tumor_stage == "Stage IIIB"]<- "Stage III"
+luad_metadata.2$ajcc_pathologic_tumor_stage[luad_metadata.2$ajcc_pathologic_tumor_stage == "[Discrepancy]"]<- NA
+
+luad_metadata.2<- luad_metadata.2%>%
+  mutate(censor = ifelse(vital_status == "Alive", 0, ifelse(vital_status == "Dead", 1, NA)))
+luad_metadata.2<- luad_metadata.2[,c(7,9,10,3,4)]
+
+## get vst counts:
+luad_metadata_deseq<- luad_metadata.2[,c(1,2)]
+rownames(luad_metadata_deseq)<- NULL
+median(luad_metadata_deseq$survival.time)
+luad_metadata_deseq<- luad_metadata_deseq%>%
+  mutate(Survival = ifelse(survival.time>=225, "LTS", ifelse(survival.time<=225, "STS",NA)))%>%
+  column_to_rownames("Sample.ID")%>%
+  dplyr::select(-1)
+
+luad_counts.telescope<- luad_counts.telescope[rownames(luad_metadata_deseq)]
+table(colnames(luad_counts.telescope) == rownames(luad_metadata_deseq))
+
+dds_luad<- DESeqDataSetFromMatrix(countData = luad_counts.telescope, colData =luad_metadata_deseq, design = ~Survival)
+dds_luad$Survival<- factor(dds_luad$Survival, levels = c("STS", "LTS"))
+luad_sizefactors<- luad_sizefactors[match(rownames(luad_metadata_deseq), luad_sizefactors$Sample),]
+table(rownames(luad_metadata_deseq) == luad_sizefactors$Sample)
+
+sizeFactors(dds_luad)<- luad_sizefactors$sizefactor
+dds_luad.2<- dds_luad[rowSums(counts(dds_luad)>=10)>=240.5,]
+table(rowSums(counts(dds_luad)>=10)>=240.5)
+
+luad_vst<- as.data.frame(assay(vst(dds_luad.2, blind = F)))
+write.csv(luad_vst, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_vst_0.5_3060_481.csv")
+luad_vst<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_vst_0.5_3060_481.csv", row.names = 1, check.names = F)
+
+table(luad_metadata.2$Sample.ID == colnames(luad_vst))
+luad_cox_input<- data.frame(luad_metadata.2[,c("Sample.ID","survival.time","censor","age_at_initial_pathologic_diagnosis", "ajcc_pathologic_tumor_stage")], t(luad_vst))
+rownames(luad_cox_input)<- NULL
+luad_cox_input<- luad_cox_input%>%
+  column_to_rownames("Sample.ID")
+
+luad_cox_input[,c(1,2,3)]<- lapply(luad_cox_input[,c(1,2,3)], as.numeric)
+luad_cox_input$ajcc_pathologic_tumor_stage<- as.factor(luad_cox_input$ajcc_pathologic_tumor_stage)
+```
+
+
+```{r}
+## Cox with RegParalell:
+luad_cox_res<-RegParallel(
+    data = luad_cox_input,
+    formula = 'Surv(survival.time, censor) ~ [*] + age_at_initial_pathologic_diagnosis + ajcc_pathologic_tumor_stage',
+    FUN = function(formula, data)
+      coxph(formula = formula,
+        data = data,
+        ties = 'breslow',
+        singular.ok = TRUE),
+    FUNtype = 'coxph',
+    variables = colnames(luad_cox_input)[5:ncol(luad_cox_input)],
+    blocksize = 3000,
+    cores = 2,
+    nestedParallel = FALSE,
+    conflevel = 95,
+    excludeTerms = c("age_at_initial_pathologic_diagnosis", "ajcc_pathologic_tumor_stage"),
+    excludeIntercept = TRUE,
+    p.adjust = 'fdr')
+
+write.csv(luad_cox_input, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_cox_input_481.csv")
+luad_cox_input<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_cox_input_481.csv", row.names = 1)
+
+write.csv(luad_cox_res, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/LUAD-vst_cox_results_481.csv")
+luad_cox_res<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/LUAD-vst_cox_results_481.csv", row.names = 1)
+
+
+luad_unstr<- read.delim("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/TCGA-LUAD_unstr-counts_481.txt", stringsAsFactors = F, check.names = F, row.names = 1)
+luad_unstr<- luad_unstr[samples]
+table(samples == colnames(luad_unstr))
+table(samples == luad_qual.cases$File.Name)
+colnames(luad_unstr)<- luad_qual.cases$Sample.ID
+
+write.csv(luad_unstr, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/TCGA-LUAD_genecounts_raw.481.txt")
+```
+
+
+```{r}
+## TPM:
+luad_genecounts_am<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/AM/LUAD_GeneCounts_AM.csv", row.names = 2, check.names = F)
+luad_genecounts_am<- luad_genecounts_am[-1]
+colnames(luad_genecounts_am)<- gsub("\\.", "-", colnames(luad_genecounts_am))
+
+table(rownames(luad_genecounts_am) == gene_lengths$gene_name)
+
+luad_metadata.trim<- luad_metadata
+luad_metadata.trim<- luad_metadata.trim[!grepl("-11A|-02|-11B", luad_metadata.trim$Sample.ID),]
+luad_metadata.trim<- luad_metadata.trim%>%
+  mutate(tmp1 = sapply(strsplit(Sample.ID, "-"), function(x) x[[4]][[1]]))%>%
+  mutate(tmp2 = gsub("-01A|-01B|-01C","",Sample.ID))%>%
+  group_by(tmp2)%>%filter(!duplicated(tmp1))
+
+luad_genecounts_am_filt<-luad_genecounts_am
+luad_genecounts_am_filt<- as.data.frame(t(luad_genecounts_am_filt))
+luad_genecounts_am_filt<-luad_genecounts_am_filt%>%
+  mutate(tmp1 = sapply(strsplit(rownames(luad_genecounts_am_filt), "-"), function(x) x[[4]][[1]]))%>%
+  mutate(tmp2 = gsub("-01A|-01B","",rownames(luad_genecounts_am_filt)))
+newcolumn_luad = luad_genecounts_am_filt %>%
+  dplyr::select(tmp1,tmp2)%>%
+  group_by(tmp2)%>%
+  mutate(tmp3 = paste0(tmp1,collapse = "-"))%>%
+  dplyr::slice(1)%>%
+  dplyr::select(-tmp1)%>%
+  mutate(new_name = paste(tmp2,tmp3,sep = "-",collapse = "-"))
+
+luad_genecounts_am_filt=luad_genecounts_am_filt%>%
+  dplyr::select(-tmp1)%>%
+  group_by(tmp2)%>%summarise_all(funs(mean))
+
+luad_genecounts_am_filt<- left_join(luad_genecounts_am_filt, newcolumn_luad[,c(1,3)], by ="tmp2")
+luad_genecounts_am_filt<- luad_genecounts_am_filt%>%
+  dplyr::select(-tmp2)%>%
+  column_to_rownames("new_name")
+
+table(colnames(luad_genecounts_am_filt) == gene_lengths$gene_name)
+luad_genecounts_am_tpm<- as.data.frame(tpm3(t(luad_genecounts_am_filt), gene_lengths$gene_length))
+write.csv(luad_genecounts_am_tpm, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_genecounts_AM_tpm.csv")
+luad_genecounts_am_filt<- as.data.frame(t(luad_genecounts_am_filt))
+write.csv(luad_genecounts_am_filt, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_genecounts_AM.csv")
+luad_genecounts_am_filt<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_genecounts_AM.csv", row.names = 1, check.names = F)
+
+
+luad_cox_input.2<-luad_cox_input
+luad_cox_input.2<-luad_cox_input.2%>%
+  mutate(tmp1 = sapply(strsplit(rownames(luad_cox_input.2), "-"), function(x) x[[4]][[1]]))%>%
+  mutate(tmp2 = gsub("-01A|-01B","",rownames(luad_cox_input.2)))
+newcolumn_luad = luad_cox_input.2 %>%
+  dplyr::select(tmp1,tmp2,survival.time, censor, age_at_initial_pathologic_diagnosis, ajcc_pathologic_tumor_stage)%>%
+  group_by(tmp2)%>%
+  mutate(tmp3 = paste0(tmp1,collapse = "-"))%>%
+  dplyr::slice(1)%>%
+  dplyr::select(-tmp1)%>%
+  mutate(new_name = paste(tmp2,tmp3,sep = "-",collapse = "-"))
+
+luad_cox_input.2=luad_cox_input.2[-c(1:4)]%>%
+  dplyr::select(-tmp1)%>%
+  group_by(tmp2)%>%summarise_all(funs(mean))
+
+luad_cox_input.2<- left_join(luad_cox_input.2, newcolumn_luad, by ="tmp2")
+luad_cox_input.2<- luad_cox_input.2%>%
+  dplyr::select(-c(tmp2,tmp3))%>%
+  column_to_rownames("new_name")
+
+
+
+luad_cox_input.2.1<- luad_cox_input.2[rownames(luad_cox_input.2) %in% colnames(luad_genecounts_am_filt),]
+luad_cox_input.2.1<- luad_cox_input.2.1[,c(10720:10723, 1:10719)]
+write.csv(luad_cox_input.2.1, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_cox_input_filt.csv")
+table(rownames(luad_cox_input.2.1) == colnames(luad_genecounts_am_filt))
+luad_cox_input<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/luad_cox_input_filt.csv", stringsAsFactors = F, row.names = 1)
+```
+
+
+```{r}
+# Calc CPM:
+LUAD_counts.telescope.cpm<- luad_counts.telescope
+table(colnames(LUAD_counts.telescope.cpm) == luad_sizefactors$Sample)
+LUAD_counts.telescope.cpm <- (luad_counts.telescope/luad_metrics$mapped_frags.bt2)*1000000
+tmp<- LUAD_counts.telescope.cpm[unique(colnames(LUAD_counts.telescope.cpm))]
+
+write.csv(LUAD_counts.telescope.cpm, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/Telescope_luad_CPM.csv")
+LUAD_counts.telescope.cpm<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/Telescope_luad_CPM.csv", stringsAsFactors = F, check.names = F)
+
+LUAD_counts.telescope.cpm.filt<- cbind(tmp[colnames(tmp) %in% rownames(luad_cox_input)], tmp[colnames(tmp) %in% c("TCGA-44-5645-01A", "TCGA-44-2668-01A", "TCGA-44-3918-01A","TCGA-44-6147-01A","TCGA-44-2656-01A","TCGA-44-2662-01A","TCGA-44-2665-01A","TCGA-44-4112-01A","TCGA-44-2666-01A","TCGA-44-3917-01A","TCGA-44-6146-01A")])
+
+
+write.csv(LUAD_counts.telescope.cpm.filt, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-LUAD/Telescope_luad_CPM_filt.csv")
+table((rowSums(LUAD_counts.telescope.cpm.filt)>0.2)>=length(colnames(LUAD_counts.telescope.cpm.filt))*0.75)
+```
+
