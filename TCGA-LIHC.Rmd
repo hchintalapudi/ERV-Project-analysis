@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r}
+source("libs.R")
 ## TCGA-LIHC:
 genes<- as.data.frame(rtracklayer::import("/Users/hchintalapudi/Desktop/work/TCGA analysis/genes.gtf"))
 
