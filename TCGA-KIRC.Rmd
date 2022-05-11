@@ -215,4 +215,13 @@ kirc_cox_input<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCa
 write.csv(kirc_cox_res, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/KIRC-vst_cox_results_463.csv")
 kirc_cox_res<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/KIRC-vst_cox_results_463.csv", row.names = 1)
 kirc_cox_res_tmp<- read.csv("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/KIRC-vst_cox_results.csv", row.names = 1)
+
+## Gene counts:
+kirc_unstr_counts<- read.delim("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/TCGA-KIRC_unstr.txt", row.names = 1, check.names = F)
+table(colnames(kirc_unstr_counts) %in% samples)
+kirc_unstr_counts<- kirc_unstr_counts[samples]
+table(colnames(kirc_unstr_counts) == samples)
+colnames(kirc_unstr_counts)<- kirc_samples_filt_Ali$Sample.ID
+
+write.csv(kirc_unstr_counts, file = "/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-KIRC/TCGA-KIRC_raw.genecounts.txt")
 ```
