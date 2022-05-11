@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r}
+source("libs.R")
 ## TCGA-OV:
 OV_metadata<- read.table("/Users/hchintalapudi/Desktop/work/TCGA analysis/PanCancer/TCGA-OV/TCGA-OV_gdc_sample_sheet.2021-09-01.tsv", header = T, sep = "\t")
 OV_metadata<- OV_metadata[!grepl("-11A|-02", OV_metadata$Sample.ID),]
